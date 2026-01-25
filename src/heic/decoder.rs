@@ -1,4 +1,5 @@
 use crate::heif::{HeifReader, ItemInfoEntry, ItemType};
+use crate::hevc::{NalUnitKind, VideoParameterSetReader};
 use anyhow::{Result, anyhow, bail};
 
 #[derive(Debug)]
@@ -9,9 +10,29 @@ impl HeicDecoder {
         let mut reader = HeifReader::new(data);
         let heif = reader.read()?;
 
+        let hevc_config = heif
+            .hevc_configuration_record()
+            .ok_or_else(|| anyhow!("missing HEVC decoder configuration"))?;
+
+        // the order should _typically_ be VPS, SPS, PPS
+        let vps = {
+            let b = hevc_config
+                .arrays
+                .iter()
+                .find(|a| matches!(a.nal_unit_type(), NalUnitKind::VPS))
+                .ok_or_else(|| anyhow!("no VPS in hvcC"))?
+                .nal_units
+                .first()
+                .ok_or_else(|| anyhow!("vps array is empty"))?;
+
+            VideoParameterSetReader::read(&b.data)?
+        };
+
+        dbg!(vps);
+
         let primary_item_id = heif.primary_item_id();
         let primary_item_info = heif
-            .get_item_info_by_item_id(primary_item_id)
+            .item_info_by_item_id(primary_item_id)
             .ok_or_else(|| anyhow!("primary item {} not found in item_info", primary_item_id))?;
 
         match primary_item_info {

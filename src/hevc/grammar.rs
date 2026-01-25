@@ -125,3 +125,19 @@ impl NALArray {
 pub struct NALUnit {
     pub data: Box<[u8]>,
 }
+
+#[derive(Debug)]
+pub struct VideoParameterSet {
+    pub vps_video_parameter_set_id: u8,
+    pub vps_base_layer_internal_flag: bool,
+    pub vps_base_layer_available_flag: bool,
+    pub vps_max_layers_minus1: u8,
+    pub vps_max_sub_layers_minus1: u8,
+    pub vps_temporal_id_nesting_flag: bool,
+    pub vps_max_layer_id: u8,
+    pub vps_num_layer_sets_minus1: u32,
+    pub vps_timing_info_present_flag: bool,
+    // optional timing info
+    pub vps_num_units_in_tick: Option<u32>,
+    pub vps_time_scale: Option<u32>,
+}

@@ -27,12 +27,25 @@ impl<'a> Heif<'a> {
         self.meta_box.primary_item.item_id
     }
 
-    pub fn get_item_info_by_item_id(&self, target_item_id: u32) -> Option<&ItemInfoEntry<'a>> {
+    pub fn item_info_by_item_id(&self, target_item_id: u32) -> Option<&ItemInfoEntry<'a>> {
         self.meta_box
             .item_info
             .item_info_entries
             .iter()
             .find(|ItemInfoEntry::Fixed { item_id, .. }| *item_id == target_item_id)
+    }
+
+    pub fn hevc_configuration_record(&self) -> Option<&HEVCDecoderConfigurationRecord> {
+        self.meta_box.item_properties.as_ref().and_then(|props| {
+            props
+                .container
+                .properties
+                .iter()
+                .find_map(|prop| match prop {
+                    ItemProperty::HevcDecoderConfiguration(config) => Some(config),
+                    _ => None,
+                })
+        })
     }
 }
 
