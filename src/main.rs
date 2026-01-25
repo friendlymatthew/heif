@@ -1,8 +1,7 @@
-use heif::HeifReader;
+use heif::HeicDecoder;
 
 fn main() {
     let data = std::fs::read("./halfmoonbay.heic").unwrap();
 
-    let mut reader = HeifReader::new(&data);
-    reader.read().unwrap();
+    let _ = HeicDecoder::decode(&data).unwrap();
 }

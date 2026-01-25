@@ -1,14 +1,15 @@
 use anyhow::{Result, anyhow, bail, ensure};
 
-use crate::{
+use crate::heif::{
     BoxKind, ColorInformationBox, DataEntryBaseBox, DataEntryImdaBox, DataEntrySeqNumImdaBox,
     DataEntryUrlBox, DataEntryUrnBox, DataInformationBox, DataReferenceBox, FileTypeBox,
-    HandlerBox, ImageRotationBox, ImageSpatialExtentsPropertyBox, IsoBmffBox, ItemInfoBox,
+    HandlerBox, Heif, ImageRotationBox, ImageSpatialExtentsPropertyBox, IsoBmffBox, ItemInfoBox,
     ItemInfoEntry, ItemLocationBox, ItemLocationBoxReference, ItemPropertiesBox, ItemProperty,
     ItemPropertyAssociationBox, ItemPropertyContainerBox, ItemReferenceBox, ItemType, MetaBox,
     PixelInformationPropertyBox, PrimaryItemBox, RootBox, SingleItemReferenceBox, VersionFlag,
-    impl_read_for_datatype,
 };
+
+use crate::impl_read_for_datatype;
 
 #[derive(Debug)]
 pub struct HeifReader<'a> {
@@ -28,10 +29,36 @@ impl<'a> HeifReader<'a> {
         }
     }
 
-    pub fn read(&mut self) -> Result<()> {
+    pub fn get_item_data(&self, item_id: u32, iloc: &ItemLocationBox) -> Result<&'a [u8]> {
+        let item_ref = iloc
+            .references
+            .iter()
+            .find(|r| r.item_id == item_id)
+            .ok_or_else(|| anyhow!("item {} not found in iloc", item_id))?;
+
+        match item_ref.construction_method {
+            0 => {}
+            1 => todo!("idat construction method not yet supported"),
+            n => bail!("unknown construction_method {}", n),
+        }
+
+        if item_ref.extents.len() != 1 {
+            todo!("multiple extents not yet supported (probably concatenate them though)");
+        }
+
+        let (extent_offset, extent_length) = item_ref.extents[0];
+        let start = (item_ref.base_offset + extent_offset) as usize;
+        let end = start + extent_length as usize;
+
+        self.data
+            .get(start..end)
+            .ok_or_else(|| anyhow!("item {} data out of bounds", item_id))
+    }
+
+    pub fn read(&mut self) -> Result<Heif<'a>> {
         let file_type_box = self.read_file_type_box()?;
 
-        dbg!(&file_type_box);
+        let mut meta_box = None;
 
         loop {
             if self.cursor == self.data.len() {
@@ -40,14 +67,18 @@ impl<'a> HeifReader<'a> {
 
             match self.peek_box_kind()? {
                 b"meta" => {
-                    let meta_box = self.read_meta_box()?;
-                    dbg!(&meta_box);
+                    meta_box = Some(self.read_meta_box()?);
                 }
                 foreign => self.skip_box(foreign)?,
             }
         }
 
-        Ok(())
+        let meta_box = meta_box.ok_or_else(|| anyhow!("missing required meta box"))?;
+
+        Ok(Heif {
+            file_type_box,
+            meta_box,
+        })
     }
 
     fn read_file_type_box(&mut self) -> Result<FileTypeBox<'a>> {
@@ -573,9 +604,9 @@ impl<'a> HeifReader<'a> {
                             let construction_method = if version == 1 || version == 2 {
                                 let packed = this.read_u16()?;
                                 // Upper 12 bits are reserved, lower 4 bits are construction_method
-                                Some(packed & 0x0F)
+                                packed & 0x0F
                             } else {
-                                None
+                                0
                             };
 
                             let data_reference_index = this.read_u16()?;

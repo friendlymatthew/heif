@@ -14,6 +14,26 @@ macro_rules! impl_box {
     };
 }
 
+#[derive(Debug)]
+pub struct Heif<'a> {
+    pub file_type_box: FileTypeBox<'a>,
+    pub meta_box: MetaBox<'a>,
+}
+
+impl<'a> Heif<'a> {
+    pub fn primary_item_id(&self) -> u32 {
+        self.meta_box.primary_item.item_id
+    }
+
+    pub fn get_item_info_by_item_id(&self, target_item_id: u32) -> Option<&ItemInfoEntry<'a>> {
+        self.meta_box
+            .item_info
+            .item_info_entries
+            .iter()
+            .find(|ItemInfoEntry::Fixed { item_id, .. }| *item_id == target_item_id)
+    }
+}
+
 // not a real box. but to indicate we're in the root
 #[derive(Debug)]
 pub struct RootBox;
@@ -276,7 +296,7 @@ impl_box!(ItemLocationBox, b"iloc");
 #[derive(Debug)]
 pub struct ItemLocationBoxReference {
     pub item_id: u32,
-    pub construction_method: Option<u16>,
+    pub construction_method: u16,
     pub data_reference_index: u16,
     pub base_offset: u64,
     /// (offset, length)
