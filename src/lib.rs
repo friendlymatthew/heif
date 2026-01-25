@@ -1,8 +1,10 @@
 #![warn(clippy::nursery)]
 
+mod impl_read;
+
 pub mod heic;
 pub mod heif;
-mod impl_read;
+pub mod hevc;
 
 pub use heic::HeicDecoder;
 pub use heif::HeifReader;

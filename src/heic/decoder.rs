@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow, bail};
 pub struct HeicDecoder;
 
 impl HeicDecoder {
-    pub fn decode<'a>(data: &'a [u8]) -> Result<()> {
+    pub fn decode(data: &[u8]) -> Result<()> {
         let mut reader = HeifReader::new(data);
         let heif = reader.read()?;
 
@@ -30,6 +30,8 @@ impl HeicDecoder {
                         .ok_or_else(|| {
                             anyhow!("grid {} has no tile references", primary_item_id)
                         })?;
+
+                    println!("\nGrid image with {} tiles", grid_ref.to_item_ids.len());
 
                     // every tile is an hevc bitstream
                     let _tiles = grid_ref

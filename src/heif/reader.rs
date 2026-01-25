@@ -9,6 +9,7 @@ use crate::heif::{
     PixelInformationPropertyBox, PrimaryItemBox, RootBox, SingleItemReferenceBox, VersionFlag,
 };
 
+use crate::hevc::{HEVCDecoderConfigurationRecord, NALArray, NALUnit};
 use crate::impl_read_for_datatype;
 
 #[derive(Debug)]
@@ -442,16 +443,9 @@ impl<'a> HeifReader<'a> {
                     ColorInformationBox::KIND => {
                         ItemProperty::ColorInformation(this.read_color_information_box()?)
                     }
-                    BoxKind(b"hvcC") => {
-                        // skip hevc configuration box for now
-                        // panic!("need to read");
-
-                        let start = this.cursor;
-                        let (_, box_size) = this.read_box_header()?;
-
-                        this.cursor = start + box_size;
-                        continue;
-                    }
+                    BoxKind(b"hvcC") => ItemProperty::HevcDecoderConfiguration(
+                        this.read_hevc_decoder_configuration_box()?,
+                    ),
                     ImageSpatialExtentsPropertyBox::KIND => {
                         ItemProperty::ImageSpatialExtentsProperty(
                             this.read_image_spatial_extents_property_box()?,
@@ -571,6 +565,68 @@ impl<'a> HeifReader<'a> {
                 })
             },
         )
+    }
+
+    fn read_hevc_decoder_configuration_box(&mut self) -> Result<HEVCDecoderConfigurationRecord> {
+        self.with_box(&BoxKind(b"hvcC"), |this, _start, _box_size| {
+            let configuration_version = this.read_u8()?;
+            ensure!(configuration_version == 1, "unsupported hvcC version");
+
+            let general_profile_byte = this.read_u8()?;
+            let general_profile_compatibility_flags = this.read_u32()?;
+            let general_constraint_indicator_flags = {
+                let upper = this.read_u32()? as u64;
+                let lower = this.read_u16()? as u64;
+                (upper << 16) | lower
+            };
+            let general_level_idc = this.read_u8()?;
+            let min_spatial_segmentation = this.read_u16()?;
+            let parallelism_byte = this.read_u8()?;
+            let chroma_format_byte = this.read_u8()?;
+            let bit_depth_luma_byte = this.read_u8()?;
+            let bit_depth_chroma_byte = this.read_u8()?;
+            let avg_frame_rate = this.read_u16()?;
+            let frame_rate_byte = this.read_u8()?;
+            let num_arrays = this.read_u8()?;
+            let mut arrays = Vec::with_capacity(num_arrays as usize);
+
+            for _ in 0..num_arrays {
+                let type_byte = this.read_u8()?;
+
+                let num_nal_units = this.read_u16()?;
+                let mut nal_units = Vec::with_capacity(num_nal_units as usize);
+
+                for _ in 0..num_nal_units {
+                    let nal_unit_length = this.read_u16()? as usize;
+                    let nal_data = this.read_slice(nal_unit_length)?;
+
+                    nal_units.push(NALUnit {
+                        data: nal_data.to_vec().into_boxed_slice(),
+                    });
+                }
+
+                arrays.push(NALArray {
+                    type_byte,
+                    nal_units: nal_units.into_boxed_slice(),
+                });
+            }
+
+            Ok(HEVCDecoderConfigurationRecord {
+                configuration_version,
+                general_profile_byte,
+                general_profile_compatibility_flags,
+                general_constraint_indicator_flags,
+                general_level_idc,
+                min_spatial_segmentation,
+                parallelism_byte,
+                chroma_format_byte,
+                bit_depth_luma_byte,
+                bit_depth_chroma_byte,
+                avg_frame_rate,
+                frame_rate_byte,
+                arrays: arrays.into_boxed_slice(),
+            })
+        })
     }
 
     fn read_item_location_box(&mut self) -> Result<ItemLocationBox> {

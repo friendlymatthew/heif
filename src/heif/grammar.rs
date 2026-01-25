@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use crate::hevc::HEVCDecoderConfigurationRecord;
+
 macro_rules! impl_box {
     ($box_struct:ident<$lifetime:lifetime>, $box_kind:expr) => {
         impl<$lifetime> IsoBmffBox<$lifetime> for $box_struct<$lifetime> {
@@ -21,7 +23,7 @@ pub struct Heif<'a> {
 }
 
 impl<'a> Heif<'a> {
-    pub fn primary_item_id(&self) -> u32 {
+    pub const fn primary_item_id(&self) -> u32 {
         self.meta_box.primary_item.item_id
     }
 
@@ -209,7 +211,7 @@ impl_box!(ItemPropertyContainerBox, b"ipco");
 #[derive(Debug)]
 pub enum ItemProperty {
     ColorInformation(ColorInformationBox),
-    // HevcDecoderConfiguration(HevcConfigurationBox),
+    HevcDecoderConfiguration(HEVCDecoderConfigurationRecord),
     ImageSpatialExtentsProperty(ImageSpatialExtentsPropertyBox),
     ImageRotation(ImageRotationBox),
     PixelInformationProperty(PixelInformationPropertyBox),
