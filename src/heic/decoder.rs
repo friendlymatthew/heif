@@ -1,5 +1,5 @@
 use crate::heif::{HeifReader, ItemInfoEntry, ItemType};
-use crate::hevc::{NalUnitKind, VideoParameterSetReader};
+use crate::hevc::{NalUnitKind, RbspReader, sequence_parameter_set_rbsp, video_parameter_set_rbsp};
 use anyhow::{Result, anyhow, bail};
 
 #[derive(Debug)]
@@ -15,6 +15,7 @@ impl HeicDecoder {
             .ok_or_else(|| anyhow!("missing HEVC decoder configuration"))?;
 
         // the order should _typically_ be VPS, SPS, PPS
+        // note does heif generally have 1 of each?
         let vps = {
             let b = hevc_config
                 .arrays
@@ -25,10 +26,27 @@ impl HeicDecoder {
                 .first()
                 .ok_or_else(|| anyhow!("vps array is empty"))?;
 
-            VideoParameterSetReader::read(&b.data)?
+            let (_header, bitstream) = read_raw_nal_unit(&b.data)?;
+            video_parameter_set_rbsp(&bitstream)?
         };
 
         dbg!(vps);
+
+        let sps = {
+            let b = hevc_config
+                .arrays
+                .iter()
+                .find(|a| matches!(a.nal_unit_type(), NalUnitKind::SPS))
+                .ok_or_else(|| anyhow!("no SPS in hvcC"))?
+                .nal_units
+                .first()
+                .ok_or_else(|| anyhow!("sps array is empty"))?;
+
+            let (_header, bitstream) = read_raw_nal_unit(&b.data)?;
+            sequence_parameter_set_rbsp(&bitstream)?
+        };
+
+        dbg!(sps);
 
         let primary_item_id = heif.primary_item_id();
         let primary_item_info = heif
@@ -71,4 +89,12 @@ impl HeicDecoder {
 
         Ok(())
     }
+}
+
+fn read_raw_nal_unit(raw_nal_unit: &[u8]) -> Result<(&[u8], Vec<u8>)> {
+    let (header, raw) = raw_nal_unit
+        .split_at_checked(2)
+        .ok_or_else(|| anyhow!("nal unit is too short"))?;
+
+    Ok((header, RbspReader::remove_emulation_prevention(raw)))
 }
