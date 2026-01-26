@@ -6,7 +6,6 @@ use crate::{
     impl_read_for_datatype,
 };
 use anyhow::{Result, anyhow, bail, ensure};
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
 #[derive(Debug)]
 pub struct ICCProfileReader<'a> {
