@@ -1,6 +1,6 @@
 use crate::hevc::{
-    ChromaFormat, ColorPrimaries, MatrixCoefficients, RbspReader, SequenceParameterSet,
-    TransferCharacteristics, VideoParameterSet,
+    ChromaFormat, ColorPrimaries, MatrixCoefficients, PictureParameterSet, RbspReader,
+    SequenceParameterSet, TransferCharacteristics, VideoParameterSet,
 };
 use anyhow::Result;
 
@@ -341,6 +341,148 @@ fn skip_hrd_parameters(reader: &mut RbspReader) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn picture_parameter_set_rbsp(data: &[u8]) -> Result<PictureParameterSet> {
+    let mut reader = RbspReader::new(data);
+
+    let pps_pic_parameter_set_id = reader.read_ue()?;
+    let pps_seq_parameter_set_id = reader.read_ue()?;
+    let dependent_slice_segments_enabled_flag = reader.read_flag()?;
+    let output_flag_present_flag = reader.read_flag()?;
+    let num_extra_slice_header_bits = reader.read_u8(3)?;
+    let sign_data_hiding_enabled_flag = reader.read_flag()?;
+    let cabac_init_present_flag = reader.read_flag()?;
+    let num_ref_idx_l0_default_active_minus1 = reader.read_ue()?;
+    let num_ref_idx_l1_default_active_minus1 = reader.read_ue()?;
+    let init_qp_minus26 = reader.read_se()?;
+    let constrained_intra_pred_flag = reader.read_flag()?;
+    let transform_skip_enabled_flag = reader.read_flag()?;
+    let cu_qp_delta_enabled_flag = reader.read_flag()?;
+
+    let diff_cu_qp_delta_depth = if cu_qp_delta_enabled_flag {
+        Some(reader.read_ue()?)
+    } else {
+        None
+    };
+
+    let pps_cb_qp_offset = reader.read_se()?;
+    let pps_cr_qp_offset = reader.read_se()?;
+    let pps_slice_chroma_qp_offsets_present_flag = reader.read_flag()?;
+    let weighted_pred_flag = reader.read_flag()?;
+    let weighted_bipred_flag = reader.read_flag()?;
+    let transquant_bypass_enabled_flag = reader.read_flag()?;
+    let tiles_enabled_flag = reader.read_flag()?;
+    let entropy_coding_sync_enabled_flag = reader.read_flag()?;
+
+    let (
+        num_tile_columns_minus1,
+        num_tile_rows_minus1,
+        uniform_spacing_flag,
+        loop_filter_across_tiles_enabled_flag,
+    ) = if tiles_enabled_flag {
+        let num_tile_columns_minus1 = reader.read_ue()?;
+        let num_tile_rows_minus1 = reader.read_ue()?;
+        let uniform_spacing_flag = reader.read_flag()?;
+
+        if !uniform_spacing_flag {
+            for _ in 0..num_tile_columns_minus1 {
+                let _column_width_minus1 = reader.read_ue()?;
+            }
+            for _ in 0..num_tile_rows_minus1 {
+                let _row_height_minus1 = reader.read_ue()?;
+            }
+        }
+
+        let loop_filter_across_tiles_enabled_flag = reader.read_flag()?;
+
+        (
+            Some(num_tile_columns_minus1),
+            Some(num_tile_rows_minus1),
+            Some(uniform_spacing_flag),
+            Some(loop_filter_across_tiles_enabled_flag),
+        )
+    } else {
+        (None, None, None, None)
+    };
+
+    let pps_loop_filter_across_slices_enabled_flag = reader.read_flag()?;
+    let deblocking_filter_control_present_flag = reader.read_flag()?;
+
+    let (
+        deblocking_filter_override_enabled_flag,
+        pps_deblocking_filter_disabled_flag,
+        pps_beta_offset_div2,
+        pps_tc_offset_div2,
+    ) = if deblocking_filter_control_present_flag {
+        let deblocking_filter_override_enabled_flag = reader.read_flag()?;
+        let pps_deblocking_filter_disabled_flag = reader.read_flag()?;
+
+        let (beta, tc) = if !pps_deblocking_filter_disabled_flag {
+            (Some(reader.read_se()?), Some(reader.read_se()?))
+        } else {
+            (None, None)
+        };
+
+        (
+            Some(deblocking_filter_override_enabled_flag),
+            Some(pps_deblocking_filter_disabled_flag),
+            beta,
+            tc,
+        )
+    } else {
+        (None, None, None, None)
+    };
+
+    let pps_scaling_list_data_present_flag = reader.read_flag()?;
+    if pps_scaling_list_data_present_flag {
+        skip_scaling_list_data(&mut reader)?;
+    }
+
+    let lists_modification_present_flag = reader.read_flag()?;
+    let log2_parallel_merge_level_minus2 = reader.read_ue()?;
+    let slice_segment_header_extension_present_flag = reader.read_flag()?;
+
+    let _pps_extension_present_flag = reader.read_flag()?;
+
+    Ok(PictureParameterSet {
+        pps_pic_parameter_set_id,
+        pps_seq_parameter_set_id,
+        dependent_slice_segments_enabled_flag,
+        output_flag_present_flag,
+        num_extra_slice_header_bits,
+        sign_data_hiding_enabled_flag,
+        cabac_init_present_flag,
+        num_ref_idx_l0_default_active_minus1,
+        num_ref_idx_l1_default_active_minus1,
+        init_qp_minus26,
+        constrained_intra_pred_flag,
+        transform_skip_enabled_flag,
+        cu_qp_delta_enabled_flag,
+        diff_cu_qp_delta_depth,
+        pps_cb_qp_offset,
+        pps_cr_qp_offset,
+        pps_slice_chroma_qp_offsets_present_flag,
+        weighted_pred_flag,
+        weighted_bipred_flag,
+        transquant_bypass_enabled_flag,
+        tiles_enabled_flag,
+        entropy_coding_sync_enabled_flag,
+        num_tile_columns_minus1,
+        num_tile_rows_minus1,
+        uniform_spacing_flag,
+        loop_filter_across_tiles_enabled_flag,
+        pps_loop_filter_across_slices_enabled_flag,
+        deblocking_filter_control_present_flag,
+        deblocking_filter_override_enabled_flag,
+        pps_deblocking_filter_disabled_flag,
+        pps_beta_offset_div2,
+        pps_tc_offset_div2,
+        pps_scaling_list_data_present_flag,
+        lists_modification_present_flag,
+        log2_parallel_merge_level_minus2,
+        slice_segment_header_extension_present_flag,
+    })
 }
 
 fn skip_profile_tier_level(

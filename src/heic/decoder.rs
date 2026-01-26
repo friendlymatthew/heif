@@ -1,5 +1,8 @@
 use crate::heif::{HeifReader, ItemInfoEntry, ItemType};
-use crate::hevc::{NalUnitKind, RbspReader, sequence_parameter_set_rbsp, video_parameter_set_rbsp};
+use crate::hevc::{
+    NalUnitKind, RbspReader, picture_parameter_set_rbsp, sequence_parameter_set_rbsp,
+    video_parameter_set_rbsp,
+};
 use anyhow::{Result, anyhow, bail};
 
 #[derive(Debug)]
@@ -47,6 +50,23 @@ impl HeicDecoder {
         };
 
         dbg!(sps);
+
+        // Parse PPS
+        let pps = {
+            let b = hevc_config
+                .arrays
+                .iter()
+                .find(|a| matches!(a.nal_unit_type(), NalUnitKind::PPS))
+                .ok_or_else(|| anyhow!("no PPS in hvcC"))?
+                .nal_units
+                .first()
+                .ok_or_else(|| anyhow!("pps array is empty"))?;
+
+            let (_header, bitstream) = read_raw_nal_unit(&b.data)?;
+            picture_parameter_set_rbsp(&bitstream)?
+        };
+
+        dbg!(pps);
 
         let primary_item_id = heif.primary_item_id();
         let primary_item_info = heif
