@@ -46,6 +46,10 @@ impl<'a> RbspReader<'a> {
         }
     }
 
+    pub const fn is_byte_aligned(&self) -> bool {
+        self.bit_pos == 0
+    }
+
     pub fn read_flag(&mut self) -> Result<bool> {
         Ok(self.read_bit()? == 1)
     }

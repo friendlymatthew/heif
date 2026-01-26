@@ -9,7 +9,7 @@ use crate::heif::{
     PixelInformationPropertyBox, PrimaryItemBox, RootBox, SingleItemReferenceBox, VersionFlag,
 };
 
-use crate::hevc::{HEVCDecoderConfigurationRecord, NALArray, RawNalUnit};
+use crate::hevc::{HEVCDecoderConfigurationRecord, NalArray, RawNalUnit};
 use crate::impl_read_for_datatype;
 
 #[derive(Debug)]
@@ -605,7 +605,7 @@ impl<'a> HeifReader<'a> {
                     });
                 }
 
-                arrays.push(NALArray {
+                arrays.push(NalArray {
                     type_byte,
                     nal_units: nal_units.into_boxed_slice(),
                 });

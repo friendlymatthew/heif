@@ -167,7 +167,7 @@ pub struct HEVCDecoderConfigurationRecord {
     pub(crate) bit_depth_chroma_byte: u8,
     pub avg_frame_rate: u16,
     pub(crate) frame_rate_byte: u8,
-    pub arrays: Box<[NALArray]>,
+    pub arrays: Box<[NalArray]>,
 }
 
 impl HEVCDecoderConfigurationRecord {
@@ -223,26 +223,71 @@ impl HEVCDecoderConfigurationRecord {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NalUnitKind {
-    // video parameter set
+    // VCL NAL unit types (0-31)
+    TrailN = 0,
+    TrailR = 1,
+    TsaN = 2,
+    TsaR = 3,
+    StsaN = 4,
+    StsaR = 5,
+    RadlN = 6,
+    RadlR = 7,
+    RaslN = 8,
+    RaslR = 9,
+    BlaWLp = 16,
+    BlaWRadl = 17,
+    BlaNLp = 18,
+    IdrWRadl = 19,
+    IdrNLp = 20,
+    CraNut = 21,
+
+    // Non-VCL NAL unit types (32+)
     VPS = 32,
-    // sequence parameter set
     SPS = 33,
-    // picture parameter set
     PPS = 34,
+    AUD = 35,
+    EOS = 36,
+    EOB = 37,
+    FD = 38,
     PrefixSEI = 39,
     SuffixSEI = 40,
-    Unknown(u8),
+
+    // Reserved and unspecified
+    Reserved(u8),
+    Unspecified(u8),
 }
 
 impl From<u8> for NalUnitKind {
     fn from(value: u8) -> Self {
         match value {
+            0 => Self::TrailN,
+            1 => Self::TrailR,
+            2 => Self::TsaN,
+            3 => Self::TsaR,
+            4 => Self::StsaN,
+            5 => Self::StsaR,
+            6 => Self::RadlN,
+            7 => Self::RadlR,
+            8 => Self::RaslN,
+            9 => Self::RaslR,
+            16 => Self::BlaWLp,
+            17 => Self::BlaWRadl,
+            18 => Self::BlaNLp,
+            19 => Self::IdrWRadl,
+            20 => Self::IdrNLp,
+            21 => Self::CraNut,
             32 => Self::VPS,
             33 => Self::SPS,
             34 => Self::PPS,
+            35 => Self::AUD,
+            36 => Self::EOS,
+            37 => Self::EOB,
+            38 => Self::FD,
             39 => Self::PrefixSEI,
             40 => Self::SuffixSEI,
-            other => Self::Unknown(other),
+            10 | 11 | 12 | 13 | 14 | 15 | 22 | 23 | 24..=31 | 41..=47 => Self::Reserved(value),
+            48..=63 => Self::Unspecified(value),
+            _ => unreachable!("NAL unit type is 6 bits, max value is 63"),
         }
     }
 }
@@ -250,23 +295,43 @@ impl From<u8> for NalUnitKind {
 impl From<NalUnitKind> for u8 {
     fn from(value: NalUnitKind) -> Self {
         match value {
+            NalUnitKind::TrailN => 0,
+            NalUnitKind::TrailR => 1,
+            NalUnitKind::TsaN => 2,
+            NalUnitKind::TsaR => 3,
+            NalUnitKind::StsaN => 4,
+            NalUnitKind::StsaR => 5,
+            NalUnitKind::RadlN => 6,
+            NalUnitKind::RadlR => 7,
+            NalUnitKind::RaslN => 8,
+            NalUnitKind::RaslR => 9,
+            NalUnitKind::BlaWLp => 16,
+            NalUnitKind::BlaWRadl => 17,
+            NalUnitKind::BlaNLp => 18,
+            NalUnitKind::IdrWRadl => 19,
+            NalUnitKind::IdrNLp => 20,
+            NalUnitKind::CraNut => 21,
             NalUnitKind::VPS => 32,
             NalUnitKind::SPS => 33,
             NalUnitKind::PPS => 34,
+            NalUnitKind::AUD => 35,
+            NalUnitKind::EOS => 36,
+            NalUnitKind::EOB => 37,
+            NalUnitKind::FD => 38,
             NalUnitKind::PrefixSEI => 39,
             NalUnitKind::SuffixSEI => 40,
-            NalUnitKind::Unknown(v) => v,
+            NalUnitKind::Reserved(v) | NalUnitKind::Unspecified(v) => v,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct NALArray {
+pub struct NalArray {
     pub(crate) type_byte: u8,
     pub nal_units: Box<[RawNalUnit]>,
 }
 
-impl NALArray {
+impl NalArray {
     pub const fn array_completeness(&self) -> bool {
         (self.type_byte & 0x80) != 0
     }
@@ -279,6 +344,28 @@ impl NALArray {
 #[derive(Debug)]
 pub struct RawNalUnit {
     pub data: Box<[u8]>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NalUnitHeader(pub u16);
+
+impl NalUnitHeader {
+    pub const fn forbidden_zero_bit(&self) -> bool {
+        (self.0 & 0x8000) != 0
+    }
+
+    pub fn nal_unit_type(&self) -> NalUnitKind {
+        let type_bits = ((self.0 >> 9) & 0x3F) as u8;
+        NalUnitKind::from(type_bits)
+    }
+
+    pub const fn nuh_layer_id(&self) -> u8 {
+        ((self.0 >> 3) & 0x3F) as u8
+    }
+
+    pub const fn nuh_temporal_id_plus1(&self) -> u8 {
+        (self.0 & 0x07) as u8
+    }
 }
 
 #[derive(Debug)]
@@ -380,4 +467,48 @@ pub struct PictureParameterSet {
     pub lists_modification_present_flag: bool,
     pub log2_parallel_merge_level_minus2: u32,
     pub slice_segment_header_extension_present_flag: bool,
+}
+
+#[derive(Debug)]
+pub struct SliceSegmentHeader {
+    pub first_slice_segment_in_pic_flag: bool,
+    pub no_output_of_prior_pics_flag: Option<bool>,
+    pub slice_pic_parameter_set_id: u32,
+    pub slice_segment_address: Option<u32>,
+    pub slice_type: SliceKind,
+    pub pic_output_flag: Option<bool>,
+    pub colour_plane_id: Option<u8>,
+    pub slice_pic_order_cnt_lsb: Option<u32>,
+    pub slice_sao_luma_flag: Option<bool>,
+    pub slice_sao_chroma_flag: Option<bool>,
+    pub slice_qp_delta: i32,
+    pub slice_cb_qp_offset: Option<i32>,
+    pub slice_cr_qp_offset: Option<i32>,
+    pub deblocking_filter_override_flag: Option<bool>,
+    pub slice_deblocking_filter_disabled_flag: Option<bool>,
+    pub slice_beta_offset_div2: Option<i32>,
+    pub slice_tc_offset_div2: Option<i32>,
+    pub slice_loop_filter_across_slices_enabled_flag: Option<bool>,
+    pub num_entry_point_offsets: u32,
+    pub entry_point_offsets: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SliceKind {
+    B = 0,
+    P = 1,
+    I = 2,
+}
+
+impl TryFrom<u32> for SliceKind {
+    type Error = anyhow::Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::B),
+            1 => Ok(Self::P),
+            2 => Ok(Self::I),
+            other => Err(anyhow::anyhow!("invalid slice_type: {}", other)),
+        }
+    }
 }
