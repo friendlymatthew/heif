@@ -1,7 +1,7 @@
 use crate::heif::{HeifReader, ItemInfoEntry, ItemType};
 use crate::hevc::{
-    NalUnitHeader, NalUnitKind, RbspReader, picture_parameter_set_rbsp,
-    sequence_parameter_set_rbsp, slice_segment_layer_rbsp, video_parameter_set_rbsp,
+    NalUnitHeader, NalUnitKind, RbspReader, SliceSegmentReader, picture_parameter_set_rbsp,
+    sequence_parameter_set_rbsp, video_parameter_set_rbsp,
 };
 use anyhow::{Result, anyhow, bail, ensure};
 
@@ -93,7 +93,7 @@ impl HeicDecoder {
                                 anyhow!("grid {} has no tile references", primary_item_id)
                             })?;
 
-                        println!("Grid image with {} tiles", grid_ref.to_item_ids.len());
+                        dbg!("Grid image with {} tiles", grid_ref.to_item_ids.len());
 
                         let tiles = grid_ref
                             .to_item_ids
@@ -111,12 +111,9 @@ impl HeicDecoder {
                             NalUnitKind::IdrNLp
                         )));
 
-                        for (header, rbsp) in tiles {
-                            let mut reader = RbspReader::new(&rbsp);
-                            let slice_header =
-                                slice_segment_layer_rbsp(&mut reader, header, &vps, &sps, &pps)?;
-
-                            dbg!(&slice_header);
+                        for (i, (header, rbsp)) in tiles.iter().enumerate() {
+                            let mut reader = SliceSegmentReader::new(&rbsp, *header, &sps, &pps);
+                            reader.read()?;
                         }
                     }
                     // ItemType::Hvc1 => {

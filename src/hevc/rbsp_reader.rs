@@ -50,6 +50,14 @@ impl<'a> RbspReader<'a> {
         self.bit_pos == 0
     }
 
+    pub const fn byte_position(&self) -> usize {
+        self.byte_pos
+    }
+
+    pub const fn bit_position(&self) -> u8 {
+        self.bit_pos
+    }
+
     pub fn read_flag(&mut self) -> Result<bool> {
         Ok(self.read_bit()? == 1)
     }
