@@ -111,8 +111,8 @@ impl HeicDecoder {
                             NalUnitKind::IdrNLp
                         )));
 
-                        for (i, (header, rbsp)) in tiles.iter().enumerate() {
-                            let mut reader = SliceSegmentReader::new(&rbsp, *header, &sps, &pps);
+                        for (header, rbsp) in tiles {
+                            let mut reader = SliceSegmentReader::new(&rbsp, header, &sps, &pps);
                             reader.read()?;
                         }
                     }

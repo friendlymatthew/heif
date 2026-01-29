@@ -2,7 +2,7 @@ use crate::hevc::{
     ChromaFormat, ColorPrimaries, MatrixCoefficients, PictureParameterSet, RbspReader,
     SequenceParameterSet, TransferCharacteristics, VideoParameterSet,
 };
-use anyhow::Result;
+use anyhow::{Result, ensure};
 
 pub fn video_parameter_set_rbsp(data: &[u8]) -> Result<VideoParameterSet> {
     let mut reader = RbspReader::new(data);
@@ -150,7 +150,12 @@ pub fn sequence_parameter_set_rbsp(data: &[u8]) -> Result<SequenceParameterSet> 
         (None, None, None)
     };
 
-    let _sps_extension_present_flag = reader.read_flag()?;
+    let sps_extension_present_flag = reader.read_flag()?;
+
+    ensure!(
+        !sps_extension_present_flag,
+        "todo: parse out the if( sps_extension_present_flag ) {{"
+    );
 
     Ok(SequenceParameterSet {
         sps_video_parameter_set_id,

@@ -422,8 +422,6 @@ pub struct SequenceParameterSet {
     pub sps_temporal_mvp_enabled_flag: bool,
     pub strong_intra_smoothing_enabled_flag: bool,
     pub vui_parameters_present_flag: bool,
-
-    // Color space (from VUI)
     pub color_primaries: Option<ColorPrimaries>,
     pub transfer_characteristics: Option<TransferCharacteristics>,
     pub matrix_coeffs: Option<MatrixCoefficients>,

@@ -2,6 +2,7 @@
 
 mod impl_read;
 
+pub mod cabac;
 pub mod heic;
 pub mod heif;
 pub mod hevc;

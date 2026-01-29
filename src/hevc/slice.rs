@@ -12,7 +12,7 @@ pub struct SliceSegmentReader<'a> {
 }
 
 impl<'a> SliceSegmentReader<'a> {
-    pub fn new(
+    pub const fn new(
         rbsp: &'a [u8],
         nal_header: NalUnitHeader,
         sps: &'a SequenceParameterSet,
@@ -151,7 +151,7 @@ impl<'a> SliceSegmentReader<'a> {
                 if num_offsets > 0 {
                     let offset_len_minus1 = self.reader.read_ue()?;
 
-                    for i in 0..num_offsets {
+                    for _ in 0..num_offsets {
                         let offset = self.reader.read_u32(offset_len_minus1 as usize + 1)?;
                         offsets.push(offset);
                     }
