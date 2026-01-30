@@ -1,15 +1,21 @@
-use crate::hevc::RbspReader;
-use anyhow::{Result, ensure};
+use std::collections::HashMap;
 
+use crate::{cabac::SyntaxElement, hevc::RbspReader};
+use anyhow::{Result, anyhow, ensure};
+
+type CtxKey = (usize, usize);
+
+/// CABAC arithmetic decoding engine implementing Section 9.3.4.3 of the H.265 specification.
+///
+/// This engine maintains the state of the arithmetic decoder and stores context variables
+/// in a 2D structure indexed by (ctxTable, ctxIdx).
 #[derive(Debug)]
 pub struct ArithmeticDecoderEngine<'a, 'b> {
-    // the start is [256..510]
     pub ivl_curr_range: u16,
     pub ivl_offset: u16,
 
-    val_mps: Vec<bool>,
-    p_state_idx: Vec<u8>,
-
+    val_mps: HashMap<CtxKey, bool>,
+    p_state_idx: HashMap<CtxKey, u8>,
     reader: &'a mut RbspReader<'b>,
 }
 
@@ -17,18 +23,38 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
     pub fn try_new(reader: &'a mut RbspReader<'b>) -> Result<Self> {
         let ivl_offset = reader.read_bits(9)? as u16;
 
-        ensure!(ivl_offset != 510 || ivl_offset != 511);
+        ensure!(
+            ivl_offset != 510 && ivl_offset != 511,
+            "Invalid ivlOffset value"
+        );
 
         Ok(Self {
             ivl_curr_range: 510,
             ivl_offset,
-            val_mps: vec![false; MAX_CTX_IDX],
-            p_state_idx: vec![0u8; MAX_CTX_IDX],
+            val_mps: HashMap::new(),
+            p_state_idx: HashMap::new(),
             reader,
         })
     }
 
-    pub fn init_single_context(&mut self, ctx_id: usize, slice_qp: i32, init_value: u8) {
+    pub fn init_all_contexts(&mut self, slice_qp: i32) {
+        for &syntax_element in SyntaxElement::all_i_slice_elements() {
+            let ctx_table = syntax_element.ctx_table();
+            let init_values = syntax_element.init_values_i_slice();
+
+            for (ctx_idx, &init_value) in init_values.iter().enumerate() {
+                self.init_single_context(ctx_table, ctx_idx, slice_qp, init_value);
+            }
+        }
+    }
+
+    fn init_single_context(
+        &mut self,
+        ctx_table: usize,
+        ctx_idx: usize,
+        slice_qp: i32,
+        init_value: u8,
+    ) {
         let slope_idx = (init_value >> 4) as i32;
         let offset_idx = (init_value & 15) as i32;
 
@@ -38,12 +64,20 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
         let slice_qp_clamped = slice_qp.clamp(0, 51);
         let pre_ctx_state = (((m * slice_qp_clamped) >> 4) + n).clamp(1, 126) as u8;
 
-        self.val_mps[ctx_id] = pre_ctx_state > 63;
-        self.p_state_idx[ctx_id] = if self.val_mps[ctx_id] {
+        let val_mps = pre_ctx_state > 63;
+        let p_state_idx = if val_mps {
             pre_ctx_state - 64
         } else {
             63 - pre_ctx_state
         };
+
+        let key = (ctx_table, ctx_idx);
+
+        let out = self.val_mps.insert(key, val_mps);
+        debug_assert!(out.is_none());
+
+        let out = self.p_state_idx.insert(key, p_state_idx);
+        debug_assert!(out.is_none());
     }
 
     pub fn decode_bin(
@@ -60,31 +94,42 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
             return self.decode_terminate();
         }
 
-        self.decode_decision(ctx_idx)
+        self.decode_decision(ctx_table, ctx_idx)
     }
 
-    fn decode_decision(&mut self, ctx_idx: usize) -> Result<bool> {
+    fn decode_decision(&mut self, ctx_table: usize, ctx_idx: usize) -> Result<bool> {
         let q_range_idx = (self.ivl_curr_range >> 6) & 3;
-        let p_state_idx = self.p_state_idx[ctx_idx];
+
+        let ctx_key = (ctx_table, ctx_idx);
+
+        let &p_state_idx = self
+            .p_state_idx
+            .get(&ctx_key)
+            .ok_or_else(|| anyhow!("expect valid ctx key"))?;
 
         let ivl_lps_range = RANGE_TAB_LPS[p_state_idx as usize][q_range_idx as usize];
 
         self.ivl_curr_range -= ivl_lps_range as u16;
 
         let bin_val = if self.ivl_offset >= self.ivl_curr_range {
-            let bin_val = !self.val_mps[ctx_idx];
+            let bin_val = !self.val_mps.get(&ctx_key).expect("valid");
             self.ivl_offset -= self.ivl_curr_range;
             self.ivl_curr_range = ivl_lps_range as u16;
 
             if p_state_idx == 0 {
-                self.val_mps[ctx_idx] = !self.val_mps[ctx_idx];
+                let val_mps = self.val_mps.get_mut(&ctx_key).expect("valid");
+                *val_mps = !*val_mps;
             }
-            self.p_state_idx[ctx_idx] = TRANS_IDX_LPS[p_state_idx as usize];
+
+            self.p_state_idx
+                .insert(ctx_key, TRANS_IDX_LPS[p_state_idx as usize]);
 
             bin_val
         } else {
-            self.p_state_idx[ctx_idx] = TRANS_IDX_MPS[p_state_idx as usize];
-            self.val_mps[ctx_idx]
+            self.p_state_idx
+                .insert(ctx_key, TRANS_IDX_MPS[p_state_idx as usize]);
+
+            *self.val_mps.get(&ctx_key).expect("valid")
         };
 
         self.try_renorm()?;
@@ -95,7 +140,6 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
     fn try_renorm(&mut self) -> Result<()> {
         if self.ivl_curr_range < 256 {
             self.ivl_curr_range <<= 1;
-
             self.ivl_offset = (self.ivl_offset << 1) | self.reader.read_bits(1)? as u16;
         }
 
@@ -208,126 +252,3 @@ pub const RANGE_TAB_LPS: [[u8; 4]; 64] = [
     [6, 7, 8, 9],
     [2, 2, 2, 2],
 ];
-
-// safe value covering all init types
-pub const MAX_CTX_IDX: usize = 160;
-
-// these are all the init value pub constants for init type = 0 (i slices)
-
-// table 9-5: sao_merge_left_flag and sao_merge_up_flag
-pub const INIT_SAO_MERGE_FLAG: u8 = 153;
-
-// table 9-6: sao_type_idx_luma and sao_type_idx_chroma
-pub const INIT_SAO_TYPE_IDX: u8 = 200;
-
-// table 9-7: split_cu_flag (3 contexts)
-pub const INIT_SPLIT_CU_FLAG: [u8; 3] = [139, 141, 157];
-
-// table 9-8: cu_transquant_bypass_flag
-pub const INIT_CU_TRANSQUANT_BYPASS_FLAG: u8 = 154;
-
-// table 9-9: cu_skip_flag (3 contexts) - NOT USED in I-slices
-// pub const INIT_CU_SKIP_FLAG: [u8; 3] = [197, 185, 201];
-
-// table 9-10: pred_mode_flag - NOT USED in I-slices
-// pub const INIT_PRED_MODE_FLAG: u8 = 149;
-
-// table 9-11: part_mode
-// For I-slices with log2CbSize == MinCbLog2SizeY (smallest CU)
-pub const INIT_PART_MODE_SMALL: [u8; 2] = [184, 154];
-// For I-slices with log2CbSize > MinCbLog2SizeY
-pub const INIT_PART_MODE_LARGE: u8 = 184;
-
-// table 9-12: prev_intra_luma_pred_flag
-pub const INIT_PREV_INTRA_LUMA_PRED_FLAG: u8 = 184;
-
-// table 9-13: intra_chroma_pred_mode
-pub const INIT_INTRA_CHROMA_PRED_MODE: u8 = 63;
-
-// table 9-14: rqt_root_cbf - NOT USED in I-slices
-// pub const INIT_RQT_ROOT_CBF: u8 = 79;
-
-// table 9-15: merge_flag - NOT USED in I-slices
-// pub const INIT_MERGE_FLAG: u8 = 110;
-
-// table 9-16: merge_idx - NOT USED in I-slices
-// pub const INIT_MERGE_IDX: u8 = 122;
-
-// table 9-17: inter_pred_idc - NOT USED in I-slices
-
-// table 9-18: ref_idx_l0 and ref_idx_l1 - NOT USED in   I-slices
-
-// table 9-19: mvp_l0_flag and mvp_l1_flag - NOT USED in I-slices
-
-// table 9-20: split_transform_flag (3 contexts)
-pub const INIT_SPLIT_TRANSFORM_FLAG: [u8; 3] = [153, 138, 138];
-
-// table 9-21: cbf_luma (2 contexts)
-pub const INIT_CBF_LUMA: [u8; 2] = [111, 141];
-
-// table 9-22: cbf_cb and cbf_cr (4 contexts + 1 additional)
-pub const INIT_CBF_CHROMA: [u8; 5] = [94, 138, 182, 154, 149];
-
-// table 9-23: abs_mvd_greater0_flag and abs_mvd_greater1_flag - NOT USED in I-slices
-
-// table 9-24: cu_qp_delta_abs (2 contexts)
-pub const INIT_CU_QP_DELTA_ABS: [u8; 2] = [154, 154];
-
-// table 9-25: transform_skip_flag
-// [0] for luma (cIdx == 0)
-// [1] for chroma (cIdx == 1 or 2)
-pub const INIT_TRANSFORM_SKIP_FLAG: [u8; 2] = [139, 139];
-
-// table 9-26: last_sig_coeff_x_prefix (18 contexts)
-pub const INIT_LAST_SIG_COEFF_X_PREFIX: [u8; 18] = [
-    110, 110, 124, 125, 140, 153, 125, 127, 140, 109, 111, 143, 127, 111, 79, 108, 123, 63,
-];
-
-// table 9-27: last_sig_coeff_y_prefix (18 contexts)
-pub const INIT_LAST_SIG_COEFF_Y_PREFIX: [u8; 18] = [
-    110, 110, 124, 125, 140, 153, 125, 127, 140, 109, 111, 143, 127, 111, 79, 108, 123, 63,
-];
-
-// table 9-28: coded_sub_block_flag (4 contexts)
-pub const INIT_CODED_SUB_BLOCK_FLAG: [u8; 4] = [91, 171, 134, 141];
-
-// table 9-29: sig_coeff_flag (42 contexts for luma, 42 for chroma)
-// First 42 are for luma (cIdx == 0)
-pub const INIT_SIG_COEFF_FLAG_LUMA: [u8; 42] = [
-    111, 111, 125, 110, 110, 94, 124, 108, 124, 107, 125, 141, 179, 153, 125, 107, 125, 141, 179,
-    153, 125, 107, 125, 141, 179, 153, 125, 140, 139, 182, 182, 152, 136, 152, 136, 153, 136, 139,
-    111, 136, 139, 111,
-];
-// Next contexts are for chroma (starting at offset 42+)
-// But let's keep them separate for clarity
-pub const INIT_SIG_COEFF_FLAG_CHROMA: [u8; 27] = [
-    155, 154, 139, 153, 139, 123, 123, 63, 153, 166, 183, 140, 136, 153, 154, 166, 183, 140, 136,
-    153, 154, 166, 183, 140, 136, 153, 154,
-];
-
-// table 9-30: coeff_abs_level_greater1_flag (24 contexts)
-pub const INIT_COEFF_ABS_LEVEL_GREATER1_FLAG: [u8; 24] = [
-    140, 92, 137, 138, 140, 152, 138, 139, 153, 74, 149, 92, 139, 107, 122, 152, 140, 179, 166,
-    182, 140, 227, 122, 197,
-];
-
-// table 9-31: coeff_abs_level_greater2_flag (6 contexts)
-pub const INIT_COEFF_ABS_LEVEL_GREATER2_FLAG: [u8; 6] = [138, 153, 136, 167, 152, 152];
-
-// table 9-32: explicit_rdpcm_flag (2 contexts)
-pub const INIT_EXPLICIT_RDPCM_FLAG: [u8; 2] = [139, 139];
-
-// table 9-33: explicit_rdpcm_dir_flag (2 contexts)
-pub const INIT_EXPLICIT_RDPCM_DIR_FLAG: [u8; 2] = [139, 139];
-
-// table 9-34: cu_chroma_qp_offset_flag
-pub const INIT_CU_CHROMA_QP_OFFSET_FLAG: u8 = 154;
-
-// table 9-35: cu_chroma_qp_offset_idx
-pub const INIT_CU_CHROMA_QP_OFFSET_IDX: u8 = 154;
-
-// table 9-36: log2_res_scale_abs_plus1 (8 contexts for each component)
-pub const INIT_LOG2_RES_SCALE_ABS_PLUS1: [u8; 8] = [154, 154, 154, 154, 154, 154, 154, 154];
-
-// table 9-37: res_scale_sign_flag (2 contexts)
-pub const INIT_RES_SCALE_SIGN_FLAG: [u8; 2] = [154, 154];
