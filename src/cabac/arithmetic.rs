@@ -146,7 +146,7 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
         Ok(())
     }
 
-    fn decode_bypass(&mut self) -> Result<bool> {
+    pub fn decode_bypass(&mut self) -> Result<bool> {
         self.ivl_offset <<= 1;
         self.ivl_offset |= self.reader.read_bits(1)? as u16;
 
@@ -159,7 +159,7 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
         Ok(false)
     }
 
-    fn decode_terminate(&mut self) -> Result<bool> {
+    pub fn decode_terminate(&mut self) -> Result<bool> {
         self.ivl_curr_range -= 2;
 
         if self.ivl_offset >= self.ivl_curr_range {
