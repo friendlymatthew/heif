@@ -138,7 +138,7 @@ impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
     }
 
     fn try_renorm(&mut self) -> Result<()> {
-        if self.ivl_curr_range < 256 {
+        while self.ivl_curr_range < 256 {
             self.ivl_curr_range <<= 1;
             self.ivl_offset = (self.ivl_offset << 1) | self.reader.read_bits(1)? as u16;
         }
