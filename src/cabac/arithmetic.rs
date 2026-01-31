@@ -73,11 +73,8 @@ impl<'a> ArithmeticDecoderEngine<'a> {
 
         let key = (ctx_table, ctx_idx);
 
-        let out = self.val_mps.insert(key, val_mps);
-        debug_assert!(out.is_none());
-
-        let out = self.p_state_idx.insert(key, p_state_idx);
-        debug_assert!(out.is_none());
+        self.val_mps.insert(key, val_mps);
+        self.p_state_idx.insert(key, p_state_idx);
     }
 
     pub fn decode_bin(
@@ -169,6 +166,10 @@ impl<'a> ArithmeticDecoderEngine<'a> {
         self.try_renorm()?;
 
         Ok(false)
+    }
+
+    pub fn byte_alignment(&mut self) -> Result<()> {
+        self.reader.byte_alignment()
     }
 }
 

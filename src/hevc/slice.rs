@@ -24,7 +24,7 @@ impl<'a> SliceSegmentReader<'a> {
     ) -> Result<Self> {
         let mut rbsp_reader = RbspReader::new(rbsp);
 
-        let slice_header = Self::read_slice_header(&mut rbsp_reader, nal_header, sps, pps)?;
+        let slice_header = Self::read_header(&mut rbsp_reader, nal_header, sps, pps)?;
 
         let cabac_decoder = CabacDecoder::try_new(
             rbsp_reader,
@@ -41,7 +41,7 @@ impl<'a> SliceSegmentReader<'a> {
         })
     }
 
-    fn read_slice_header(
+    fn read_header(
         reader: &mut RbspReader,
         nal_header: NalUnitHeader,
         sps: &SequenceParameterSet,
@@ -96,13 +96,13 @@ impl<'a> SliceSegmentReader<'a> {
                 let chroma = if chroma_array_type != 0 {
                     let c = reader.read_flag()?;
 
-                    Some(c)
+                    c
                 } else {
-                    None
+                    false
                 };
-                (Some(luma), chroma)
+                (luma, chroma)
             } else {
-                (None, None)
+                (false, false)
             };
 
         if !matches!(slice_kind, SliceKind::I) {
@@ -145,8 +145,8 @@ impl<'a> SliceSegmentReader<'a> {
 
         let slice_loop_filter_across_slices_enabled_flag = if pps
             .pps_loop_filter_across_slices_enabled_flag
-            && (slice_sao_luma_flag.unwrap_or(false)
-                || slice_sao_chroma_flag.unwrap_or(false)
+            && (slice_sao_luma_flag
+                || slice_sao_chroma_flag
                 || !slice_deblocking_filter_disabled_flag.unwrap_or(false))
         {
             Some(reader.read_flag()?)
@@ -179,13 +179,7 @@ impl<'a> SliceSegmentReader<'a> {
             }
         }
 
-        // byte_alignment()
-        if !reader.is_byte_aligned() {
-            let _alignment_bit = reader.read_flag()?;
-            while !reader.is_byte_aligned() {
-                let _bit = reader.read_flag()?;
-            }
-        }
+        reader.byte_alignment()?;
 
         Ok(SliceSegmentHeader {
             first_slice_segment_in_pic_flag,
@@ -211,8 +205,55 @@ impl<'a> SliceSegmentReader<'a> {
         })
     }
 
-    pub fn read(&mut self) -> Result<()> {
+    pub fn read_data(&mut self) -> Result<()> {
+        // since we have no HEVC tiles (each HEIC tile is a separate slice starting at 0),
+        // CtbAddrInRs == CtbAddrInTs, so we only need one variable
+        let mut ctb_addr = self.slice_header.slice_segment_address.unwrap_or(0);
+
+        loop {
+            self.read_coding_tree_unit(ctb_addr)?;
+
+            let end_of_slice_segment_flag = self.cabac_decoder.decode_terminate()?;
+
+            if end_of_slice_segment_flag {
+                break;
+            }
+
+            ctb_addr += 1;
+
+            if self.pps.entropy_coding_sync_enabled_flag
+                && ctb_addr % self.sps.pic_width_in_ctbs_y() == 0
+            {
+                let _end_of_subset_one_bit = self.cabac_decoder.decode_terminate()?;
+                self.cabac_decoder.byte_alignment()?;
+            }
+        }
+
         Ok(())
+    }
+
+    fn read_coding_tree_unit(&mut self, ctb_addr_in_rs: u32) -> Result<()> {
+        let pic_width_in_ctbs_y = self.sps.pic_width_in_ctbs_y();
+        let ctb_log2_size_y = self.sps.ctb_log2_size_y();
+
+        let rx = ctb_addr_in_rs % pic_width_in_ctbs_y;
+        let ry = ctb_addr_in_rs / pic_width_in_ctbs_y;
+
+        if self.slice_header.slice_sao_luma_flag || self.slice_header.slice_sao_chroma_flag {
+            let _ = self.sao(rx, ry)?;
+        }
+
+        self.coding_quadtree(rx << ctb_log2_size_y, ry << ctb_log2_size_y, 0)?;
+
+        Ok(())
+    }
+
+    fn sao(&mut self, rx: u32, ry: u32) -> Result<()> {
+        todo!()
+    }
+
+    fn coding_quadtree(&mut self, x0: u32, y0: u32, cqt_depth: usize) -> Result<()> {
+        todo!()
     }
 }
 

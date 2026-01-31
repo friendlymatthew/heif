@@ -427,6 +427,86 @@ pub struct SequenceParameterSet {
     pub matrix_coeffs: Option<MatrixCoefficients>,
 }
 
+impl SequenceParameterSet {
+    pub const fn min_cb_log2_size_y(&self) -> u32 {
+        self.log2_min_luma_coding_block_size_minus3 + 3
+    }
+
+    pub const fn ctb_log2_size_y(&self) -> u32 {
+        self.min_cb_log2_size_y() + self.log2_diff_max_min_luma_coding_block_size
+    }
+
+    pub const fn min_cb_size_y(&self) -> u32 {
+        1 << self.min_cb_log2_size_y()
+    }
+
+    pub const fn ctb_size_y(&self) -> u32 {
+        1 << self.ctb_log2_size_y()
+    }
+
+    pub const fn pic_width_in_min_cbs_y(&self) -> u32 {
+        self.pic_width_in_luma_samples / self.min_cb_size_y()
+    }
+
+    pub const fn pic_width_in_ctbs_y(&self) -> u32 {
+        self.pic_width_in_luma_samples.div_ceil(self.ctb_size_y())
+    }
+
+    pub const fn pic_height_in_min_cbs_y(&self) -> u32 {
+        self.pic_height_in_luma_samples / self.min_cb_size_y()
+    }
+
+    pub const fn pic_height_in_ctbs_y(&self) -> u32 {
+        self.pic_height_in_luma_samples.div_ceil(self.ctb_size_y())
+    }
+
+    pub const fn pic_size_in_min_cbs_y(&self) -> u32 {
+        self.pic_width_in_min_cbs_y() * self.pic_height_in_min_cbs_y()
+    }
+
+    pub const fn pic_size_in_ctbs_y(&self) -> u32 {
+        self.pic_width_in_ctbs_y() * self.pic_height_in_ctbs_y()
+    }
+
+    pub const fn pic_size_in_samples_y(&self) -> u32 {
+        self.pic_width_in_luma_samples * self.pic_height_in_luma_samples
+    }
+
+    pub const fn pic_width_in_samples_c(&self) -> u32 {
+        self.pic_width_in_luma_samples / self.sub_width_c()
+    }
+
+    pub const fn pic_height_in_samples_c(&self) -> u32 {
+        self.pic_height_in_luma_samples / self.sub_height_c()
+    }
+
+    pub const fn sub_width_c(&self) -> u32 {
+        match self.chroma_format {
+            ChromaFormat::Monochrome => 1,
+            ChromaFormat::YUV420 => 2,
+            ChromaFormat::YUV422 => 2,
+            ChromaFormat::YUV444 => 1,
+        }
+    }
+
+    pub const fn sub_height_c(&self) -> u32 {
+        match self.chroma_format {
+            ChromaFormat::Monochrome => 1,
+            ChromaFormat::YUV420 => 2,
+            ChromaFormat::YUV422 => 1,
+            ChromaFormat::YUV444 => 1,
+        }
+    }
+
+    pub const fn chroma_array_type(&self) -> u8 {
+        if self.separate_color_plane_flag {
+            0
+        } else {
+            self.chroma_format as u8
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PictureParameterSet {
     pub pps_pic_parameter_set_id: u32,
@@ -477,8 +557,8 @@ pub struct SliceSegmentHeader {
     pub pic_output_flag: Option<bool>,
     pub color_plane_id: Option<u8>,
     pub slice_pic_order_cnt_lsb: Option<u32>,
-    pub slice_sao_luma_flag: Option<bool>,
-    pub slice_sao_chroma_flag: Option<bool>,
+    pub slice_sao_luma_flag: bool,
+    pub slice_sao_chroma_flag: bool,
     pub slice_qp_delta: i32,
     pub slice_cb_qp_offset: Option<i32>,
     pub slice_cr_qp_offset: Option<i32>,

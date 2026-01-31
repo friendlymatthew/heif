@@ -242,37 +242,58 @@ impl SyntaxElement {
     }
 
     /// Returns all syntax elements that need to be initialized for I-slices.
+    /// Only includes one element per ctx_table to avoid duplicate initialization.
     pub const fn all_i_slice_elements() -> &'static [Self] {
         &[
+            // ctx_table 5: SaoMergeLeftFlag (also covers SaoMergeUpFlag)
             Self::SaoMergeLeftFlag,
-            Self::SaoMergeUpFlag,
+            // ctx_table 6: SaoTypeIdxLuma (also covers SaoTypeIdxChroma)
             Self::SaoTypeIdxLuma,
-            Self::SaoTypeIdxChroma,
+            // ctx_table 7
             Self::SplitCuFlag,
+            // ctx_table 8
             Self::CuTransquantBypassFlag,
+            // ctx_table 10
             Self::PredModeFlag,
+            // ctx_table 11
             Self::PartMode,
+            // ctx_table 12
             Self::PrevIntraLumaPredFlag,
+            // ctx_table 13
             Self::IntraChromaPredMode,
+            // ctx_table 20
             Self::SplitTransformFlag,
+            // ctx_table 21
             Self::CbfLuma,
+            // ctx_table 22: CbfCb (also covers CbfCr)
             Self::CbfCb,
-            Self::CbfCr,
-            Self::AbsMvdGreater0Flag,
-            Self::AbsMvdGreater1Flag,
+            // ctx_table 24
             Self::CuQpDeltaAbs,
+            // ctx_table 25
             Self::TransformSkipFlag,
+            // ctx_table 26
             Self::LastSigCoeffXPrefix,
+            // ctx_table 27
             Self::LastSigCoeffYPrefix,
+            // ctx_table 28
             Self::CodedSubBlockFlag,
+            // ctx_table 29
             Self::SigCoeffFlag,
+            // ctx_table 30
             Self::CoeffAbsLevelGreater1Flag,
+            // ctx_table 31
             Self::CoeffAbsLevelGreater2Flag,
+            // ctx_table 32
             Self::ExplicitRdpcmFlag,
+            // ctx_table 33
             Self::ExplicitRdpcmDirFlag,
+            // ctx_table 34
             Self::CuChromaQpOffsetFlag,
+            // ctx_table 35
             Self::CuChromaQpOffsetIdx,
+            // ctx_table 36
             Self::Log2ResScaleAbsPlus1,
+            // ctx_table 37
             Self::ResScaleSignFlag,
         ]
     }

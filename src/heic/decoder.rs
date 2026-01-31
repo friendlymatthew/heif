@@ -115,7 +115,7 @@ impl HeicDecoder {
                             let mut reader =
                                 SliceSegmentReader::try_new(&rbsp, header, &sps, &pps)?;
 
-                            reader.read()?;
+                            reader.read_data()?;
                         }
                     }
                     // ItemType::Hvc1 => {

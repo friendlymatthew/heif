@@ -50,6 +50,18 @@ impl<'a> RbspReader<'a> {
         self.bit_pos == 0
     }
 
+    pub fn byte_alignment(&mut self) -> Result<()> {
+        let one_bit = self.read_bit()?;
+        debug_assert_eq!(one_bit, 1);
+
+        while !self.is_byte_aligned() {
+            let zero_bit = self.read_bit()?;
+            debug_assert_eq!(zero_bit, 0);
+        }
+
+        Ok(())
+    }
+
     pub const fn byte_position(&self) -> usize {
         self.byte_pos
     }

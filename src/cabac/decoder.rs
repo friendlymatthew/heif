@@ -76,6 +76,10 @@ impl<'a> CabacDecoder<'a> {
         self.engine.decode_terminate()
     }
 
+    pub fn byte_alignment(&mut self) -> Result<()> {
+        self.engine.byte_alignment()
+    }
+
     // decode single context-coded bin (FL cMax=1)
     // Used for flags: split_cu_flag, pred_mode_flag, cbf_luma, etc.
     pub fn decode_bin_context(&mut self, ctx_table: usize, ctx_idx: usize) -> Result<bool> {
