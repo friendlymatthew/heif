@@ -6,3 +6,6 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.99"
+
+[dev-dependencies]
+libheif-rs = "1.0"
