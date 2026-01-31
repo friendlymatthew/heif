@@ -56,17 +56,17 @@ impl<'a> SliceSegmentReader<'a> {
 
         let slice_kind = SliceKind::try_from(slice_type_ue)?;
 
-        let pic_output_flag = self
-            .pps
-            .output_flag_present_flag
-            .then_some(self.reader.read_flag())
-            .transpose()?;
+        let pic_output_flag = if self.pps.output_flag_present_flag {
+            Some(self.reader.read_flag()?)
+        } else {
+            None
+        };
 
-        let colour_plane_id = self
-            .sps
-            .separate_color_plane_flag
-            .then_some(self.reader.read_u8(2))
-            .transpose()?;
+        let color_plane_id = if self.sps.separate_color_plane_flag {
+            Some(self.reader.read_u8(2)?)
+        } else {
+            None
+        };
 
         let slice_pic_order_cnt_lsb = None;
 
@@ -183,7 +183,7 @@ impl<'a> SliceSegmentReader<'a> {
             slice_segment_address: None,
             slice_type: slice_kind,
             pic_output_flag,
-            colour_plane_id,
+            color_plane_id,
             slice_pic_order_cnt_lsb,
             slice_sao_luma_flag,
             slice_sao_chroma_flag,

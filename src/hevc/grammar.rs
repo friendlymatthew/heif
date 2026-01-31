@@ -475,7 +475,7 @@ pub struct SliceSegmentHeader {
     pub slice_segment_address: Option<u32>,
     pub slice_type: SliceKind,
     pub pic_output_flag: Option<bool>,
-    pub colour_plane_id: Option<u8>,
+    pub color_plane_id: Option<u8>,
     pub slice_pic_order_cnt_lsb: Option<u32>,
     pub slice_sao_luma_flag: Option<bool>,
     pub slice_sao_chroma_flag: Option<bool>,
