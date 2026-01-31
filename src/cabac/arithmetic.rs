@@ -10,17 +10,17 @@ type CtxKey = (usize, usize);
 /// This engine maintains the state of the arithmetic decoder and stores context variables
 /// in a 2D structure indexed by (ctxTable, ctxIdx).
 #[derive(Debug)]
-pub struct ArithmeticDecoderEngine<'a, 'b> {
+pub struct ArithmeticDecoderEngine<'a> {
     pub ivl_curr_range: u16,
     pub ivl_offset: u16,
 
     val_mps: HashMap<CtxKey, bool>,
     p_state_idx: HashMap<CtxKey, u8>,
-    reader: &'a mut RbspReader<'b>,
+    reader: RbspReader<'a>,
 }
 
-impl<'a, 'b> ArithmeticDecoderEngine<'a, 'b> {
-    pub fn try_new(reader: &'a mut RbspReader<'b>) -> Result<Self> {
+impl<'a> ArithmeticDecoderEngine<'a> {
+    pub fn try_new(mut reader: RbspReader<'a>) -> Result<Self> {
         let ivl_offset = reader.read_bits(9)? as u16;
 
         ensure!(

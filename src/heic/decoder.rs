@@ -112,7 +112,9 @@ impl HeicDecoder {
                         )));
 
                         for (header, rbsp) in tiles {
-                            let mut reader = SliceSegmentReader::new(&rbsp, header, &sps, &pps);
+                            let mut reader =
+                                SliceSegmentReader::try_new(&rbsp, header, &sps, &pps)?;
+
                             reader.read()?;
                         }
                     }

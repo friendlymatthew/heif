@@ -2,13 +2,13 @@ use crate::{cabac::ArithmeticDecoderEngine, hevc::RbspReader};
 use anyhow::Result;
 
 #[derive(Debug)]
-pub struct CabacDecoder<'a, 'b> {
-    engine: ArithmeticDecoderEngine<'a, 'b>,
+pub struct CabacDecoder<'a> {
+    engine: ArithmeticDecoderEngine<'a>,
 }
 
-impl<'a, 'b> CabacDecoder<'a, 'b> {
+impl<'a> CabacDecoder<'a> {
     pub fn try_new(
-        reader: &'a mut RbspReader<'b>,
+        reader: RbspReader<'a>,
         init_qp_minus26: i32,
         slice_qp_delta: i32,
     ) -> Result<Self> {
@@ -217,19 +217,10 @@ where
     Ok((((1u16 << num_ones) - 1) << k) + suffix)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CoeffAbsLevelState {
     pub c_last_abs_level: u16,
     pub c_last_rice_param: u8,
-}
-
-impl Default for CoeffAbsLevelState {
-    fn default() -> Self {
-        Self {
-            c_last_abs_level: 0,
-            c_last_rice_param: 0,
-        }
-    }
 }
 
 fn decode_coeff_abs_level_remaining<F>(
