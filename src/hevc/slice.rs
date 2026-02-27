@@ -94,9 +94,7 @@ impl<'a> SliceSegmentReader<'a> {
                     sps.chroma_format as u8
                 };
                 let chroma = if chroma_array_type != 0 {
-                    let c = reader.read_flag()?;
-
-                    c
+                    reader.read_flag()?
                 } else {
                     false
                 };
@@ -222,7 +220,7 @@ impl<'a> SliceSegmentReader<'a> {
             ctb_addr += 1;
 
             if self.pps.entropy_coding_sync_enabled_flag
-                && ctb_addr % self.sps.pic_width_in_ctbs_y() == 0
+                && ctb_addr.is_multiple_of(self.sps.pic_width_in_ctbs_y())
             {
                 let _end_of_subset_one_bit = self.cabac_decoder.decode_terminate()?;
                 self.cabac_decoder.byte_alignment()?;
@@ -232,7 +230,7 @@ impl<'a> SliceSegmentReader<'a> {
         Ok(())
     }
 
-    fn read_coding_tree_unit(&mut self, ctb_addr_in_rs: u32) -> Result<()> {
+    fn read_coding_tree_unit(&self, ctb_addr_in_rs: u32) -> Result<()> {
         let pic_width_in_ctbs_y = self.sps.pic_width_in_ctbs_y();
         let ctb_log2_size_y = self.sps.ctb_log2_size_y();
 
@@ -240,7 +238,7 @@ impl<'a> SliceSegmentReader<'a> {
         let ry = ctb_addr_in_rs / pic_width_in_ctbs_y;
 
         if self.slice_header.slice_sao_luma_flag || self.slice_header.slice_sao_chroma_flag {
-            let _ = self.sao(rx, ry)?;
+            self.sao(rx, ry)?;
         }
 
         self.coding_quadtree(rx << ctb_log2_size_y, ry << ctb_log2_size_y, 0)?;
@@ -248,11 +246,11 @@ impl<'a> SliceSegmentReader<'a> {
         Ok(())
     }
 
-    fn sao(&mut self, rx: u32, ry: u32) -> Result<()> {
+    fn sao(&self, _rx: u32, _ry: u32) -> Result<()> {
         todo!()
     }
 
-    fn coding_quadtree(&mut self, x0: u32, y0: u32, cqt_depth: usize) -> Result<()> {
+    fn coding_quadtree(&self, _x0: u32, _y0: u32, _cqt_depth: usize) -> Result<()> {
         todo!()
     }
 }
